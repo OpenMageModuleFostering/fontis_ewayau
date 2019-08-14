@@ -1,6 +1,6 @@
 <?php
 /**
- * Fontis eWAY Australia payment gateway
+ * Fontis eWAY Australia Extension
  *
  * NOTICE OF LICENSE
  *
@@ -8,35 +8,16 @@
  * that is bundled with this package in the file LICENSE.txt.
  * It is also available through the world-wide-web at this URL:
  * http://opensource.org/licenses/osl-3.0.php
- * If you did not receive a copy of the license and are unable to
- * obtain it through the world-wide-web, please send an email
- * to license@magentocommerce.com so you can be sent a copy immediately.
- *
- * Original code copyright (c) 2008 Irubin Consulting Inc. DBA Varien
  *
  * @category   Fontis
  * @package    Fontis_EwayAu
- * @copyright  Copyright (c) 2010 Fontis (http://www.fontis.com.au)
+ * @author     Chris Norton
+ * @author     Matthew Gamble
+ * @copyright  Copyright (c) 2014 Fontis Pty. Ltd. (http://www.fontis.com.au)
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
-class Fontis_EwayAu_Block_Secure_Failure extends Mage_Core_Block_Template
+class Fontis_EwayAu_Block_Secure_Failure extends Fontis_EwayAu_Block_Failure
 {
-    /**
-     *  Return Error message
-     *
-     *  @return	  string
-     */
-    public function getErrorMessage ()
-    {
-        return Mage::getSingleton('checkout/session')->getEwayErrorMessage();
-    }
-
-    /**
-     * Get continue shopping url
-     */
-    public function getContinueShoppingUrl()
-    {
-        return Mage::getUrl('checkout/cart');
-    }
+    // Concrete version of the abstract class.
 }

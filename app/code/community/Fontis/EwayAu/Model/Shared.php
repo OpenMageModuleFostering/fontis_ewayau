@@ -1,6 +1,6 @@
 <?php
 /**
- * Fontis eWAY Australia payment gateway
+ * Fontis eWAY Australia Extension
  *
  * NOTICE OF LICENSE
  *
@@ -8,21 +8,22 @@
  * that is bundled with this package in the file LICENSE.txt.
  * It is also available through the world-wide-web at this URL:
  * http://opensource.org/licenses/osl-3.0.php
- * If you did not receive a copy of the license and are unable to
- * obtain it through the world-wide-web, please send an email
- * to license@magentocommerce.com so you can be sent a copy immediately.
  *
  * Original code copyright (c) 2008 Irubin Consulting Inc. DBA Varien
  *
  * @category   Fontis
  * @package    Fontis_EwayAu
- * @copyright  Copyright (c) 2010 Fontis (http://www.fontis.com.au)
+ * @author     Chris Norton
+ * @author     Matthew Gamble
+ * @copyright  Copyright (c) 2014 Fontis Pty. Ltd. (http://www.fontis.com.au)
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
 class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
 {
-    protected $_code  = 'ewayau_shared';
+    const DEFAULT_REDIRECT_URL = 'https://www.eway.com.au/gateway/payment.asp';
+
+    protected $_code = 'ewayau_shared';
 
     protected $_isGateway               = false;
     protected $_canAuthorize            = false;
@@ -37,7 +38,26 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
     protected $_formBlockType = 'ewayau/shared_form';
     protected $_paymentMethod = 'shared';
 
-    protected $_order;
+    /**
+     * @var Mage_Sales_Model_Order
+     */
+    protected $_order = null;
+
+    /**
+     * @var Fontis_EwayAu_Helper_Data
+     */
+    protected $_ewayHelper = null;
+
+    /**
+     * @return Fontis_EwayAu_Helper_Data
+     */
+    protected function getEwayHelper()
+    {
+        if ($this->_ewayHelper === null) {
+            $this->_ewayHelper = Mage::helper('ewayau');
+        }
+        return $this->_ewayHelper;
+    }
 
     /**
      * Get order model
@@ -46,22 +66,22 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
      */
     public function getOrder()
     {
-        if (!$this->_order) {
+        if ($this->_order === null) {
             $paymentInfo = $this->getInfoInstance();
-            $this->_order = Mage::getModel('sales/order')
-                            ->loadByIncrementId($paymentInfo->getOrder()->getRealOrderId());
+            $orderId = $paymentInfo->getOrder()->getRealOrderId();
+            $this->_order = Mage::getModel('sales/order')->loadByIncrementId($orderId);
         }
         return $this->_order;
     }
 
     /**
-     * Get Customer Id
+     * Get Customer ID
      *
      * @return string
      */
     public function getCustomerId()
     {
-        return Mage::getStoreConfig('payment/' . $this->getCode() . '/customer_id');
+        return $this->getConfigData('customer_id');
     }
 
     /**
@@ -71,89 +91,79 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
      */
     public function getAcceptedCurrency()
     {
-        return Mage::getStoreConfig('payment/' . $this->getCode() . '/currency');
+        return $this->getConfigData('currency');
     }
 
+    /**
+     * @return Fontis_EwayAu_Model_Shared
+     * @throws Mage_Core_Exception
+     */
     public function validate()
     {
         parent::validate();
+
         $paymentInfo = $this->getInfoInstance();
         if ($paymentInfo instanceof Mage_Sales_Model_Order_Payment) {
-            $currency_code = $paymentInfo->getOrder()->getBaseCurrencyCode();
+            $currencyCode = $paymentInfo->getOrder()->getBaseCurrencyCode();
         } else {
-            $currency_code = $paymentInfo->getQuote()->getBaseCurrencyCode();
+            $currencyCode = $paymentInfo->getQuote()->getBaseCurrencyCode();
         }
-        if ($currency_code != $this->getAcceptedCurrency()) {
-            Mage::throwException(Mage::helper('ewayau')->__('Selected currency code ('.$currency_code.') is not compatabile with eWAY'));
+        if ($currencyCode != $this->getAcceptedCurrency()) {
+            Mage::throwException($this->getEwayHelper()->__('Selected currency code (%s) is not compatible with eWAY', $currencyCode));
         }
         return $this;
     }
 
+    /**
+     * @return string
+     */
     public function getOrderPlaceRedirectUrl()
     {
-          return Mage::getUrl('ewayau/' . $this->_paymentMethod . '/redirect');
+        $url = Mage::getUrl('ewayau/' . $this->_paymentMethod . '/redirect');
+        if (!$url) {
+            $url = self::DEFAULT_REDIRECT_URL;
+        }
+        return $url;
     }
 
     /**
-     * prepare params array to send it to gateway page via POST
+     * @return string
+     */
+    public function getOrderReturnSuccessUrl()
+    {
+        return Mage::getUrl('ewayau/' . $this->_paymentMethod . '/success', array('_secure' => true));
+    }
+
+    /**
+     * Prepare parameters array to send it to gateway page via POST
      *
      * @return array
      */
     public function getFormFields()
     {
-        $billing = $this->getOrder()->getBillingAddress();
-        $fieldsArr = array();
-        $invoiceDesc = '';
-        $lengs = 0;
-        foreach ($this->getOrder()->getAllItems() as $item) {
-            if ($item->getParentItem()) {
-                continue;
-            }
-            if (Mage::helper('core/string')->strlen($invoiceDesc.$item->getName()) > 10000) {
-                break;
-            }
-            $invoiceDesc .= $item->getName() . ', ';
-        }
-        $invoiceDesc = Mage::helper('core/string')->substr($invoiceDesc, 0, -2);
+        $order = $this->getOrder();
+        $billing = $order->getBillingAddress();
+        $formattedAddress = $this->getEwayHelper()->getOrderAddressString($billing);
+        $invoiceDesc = $this->getEwayHelper()->getInvoiceDescription($order, 10000);
 
-        $address = clone $billing;
-        $address->unsFirstname();
-        $address->unsLastname();
-        $address->unsPostcode();
-        $formatedAddress = '';
-        $tmpAddress = explode(' ', str_replace("\n", ' ', trim($address->format('text'))));
-        foreach ($tmpAddress as $part) {
-            if (strlen($part) > 0) $formatedAddress .= $part . ' ';
-        }
         $paymentInfo = $this->getInfoInstance();
+        $fieldsArr = array();
         $fieldsArr['ewayCustomerID'] = $this->getCustomerId();
-        $fieldsArr['ewayTotalAmount'] = ($this->getOrder()->getBaseGrandTotal()*100);
+        $fieldsArr['ewayTotalAmount'] = ($this->getOrder()->getBaseGrandTotal() * 100);
         $fieldsArr['ewayCustomerFirstName'] = $billing->getFirstname();
         $fieldsArr['ewayCustomerLastName'] = $billing->getLastname();
         $fieldsArr['ewayCustomerEmail'] = $this->getOrder()->getCustomerEmail();
-        $fieldsArr['ewayCustomerAddress'] = trim($formatedAddress);
+        $fieldsArr['ewayCustomerAddress'] = trim($formattedAddress);
         $fieldsArr['ewayCustomerPostcode'] = $billing->getPostcode();
-//        $fieldsArr['ewayCustomerInvoiceRef'] = '';
         $fieldsArr['ewayCustomerInvoiceDescription'] = $invoiceDesc;
-        $fieldsArr['eWAYSiteTitle '] = Mage::app()->getStore()->getName();
-        $fieldsArr['eWAYAutoRedirect'] = 1;
-        $fieldsArr['ewayURL'] = Mage::getUrl('eway/' . $this->_paymentMethod . '/success', array('_secure' => true));
-        $fieldsArr['eWAYTrxnNumber'] = $paymentInfo->getOrder()->getRealOrderId();
+        $fieldsArr['ewaySiteTitle'] = Mage::app()->getStore()->getName();
+        $fieldsArr['ewayAutoRedirect'] = 1;
+        $fieldsArr['ewayURL'] = $this->getOrderReturnSuccessUrl();
+        $fieldsArr['ewayCustomerInvoiceRef'] = $paymentInfo->getOrder()->getRealOrderId();
+        $fieldsArr['ewayTrxnNumber'] = $paymentInfo->getOrder()->getRealOrderId();
         $fieldsArr['ewayOption1'] = '';
-        $fieldsArr['ewayOption2'] = Mage::helper('core')->encrypt($fieldsArr['eWAYTrxnNumber']);
+        $fieldsArr['ewayOption2'] = Mage::helper('core')->encrypt($paymentInfo->getOrder()->getRealOrderId());
         $fieldsArr['ewayOption3'] = '';
-
-        $request = '';
-        foreach ($fieldsArr as $k=>$v) {
-            $request .= '<' . $k . '>' . $v . '</' . $k . '>';
-        }
-
-        if ($this->getDebug()) {
-            $debug = Mage::getModel('eway/api_debug')
-                ->setRequestBody($request)
-                ->save();
-            $fieldsArr['ewayOption1'] = $debug->getId();
-        }
 
         return $fieldsArr;
     }
@@ -165,7 +175,7 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
      */
     public function getEwaySharedUrl()
     {
-         if (!$url = Mage::getStoreConfig('payment/ewayau_shared/api_url')) {
+         if (!$url = $this->getConfigData('api_url')) {
              $url = 'https://www.eway.com.au/gateway/payment.asp';
          }
          return $url;
@@ -178,9 +188,14 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
      */
     public function getDebug()
     {
-        return Mage::getStoreConfig('payment/' . $this->getCode() . '/debug_flag');
+        return $this->getConfigData('debug_flag');
     }
 
+    /**
+     * @param Varien_Object $payment
+     * @param float $amount
+     * @return Fontis_EwayAu_Model_Shared
+     */
     public function capture(Varien_Object $payment, $amount)
     {
         $payment->setStatus(self::STATUS_APPROVED)
@@ -189,6 +204,10 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
         return $this;
     }
 
+    /**
+     * @param Varien_Object $payment
+     * @return Fontis_EwayAu_Model_Shared
+     */
     public function cancel(Varien_Object $payment)
     {
         $payment->setStatus(self::STATUS_DECLINED)
@@ -198,20 +217,13 @@ class Fontis_EwayAu_Model_Shared extends Mage_Payment_Model_Method_Abstract
     }
 
     /**
-     * parse response POST array from gateway page and return payment status
+     * Parse response POST array from gateway page and return payment status
      *
      * @return bool
      */
     public function parseResponse()
     {
         $response = $this->getResponse();
-
-        if ($this->getDebug()) {
-            $debug = Mage::getModel('ewayau/api_debug')
-                ->load($response['eWAYoption1'])
-                ->setResponseBody(print_r($response, 1))
-                ->save();
-        }
 
         if ($response['ewayTrxnStatus'] == 'True') {
             return true;

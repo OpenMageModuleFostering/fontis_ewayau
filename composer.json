@@ -3,7 +3,7 @@
     "type": "magento-module",
     "license": "Open-Software-License-(OSL-3.0)",
     "homepage": "",
-    "description": "Adds support for eWAY Australia payment gateway.",
+    "description": "This extension uses the eWAY Australia payment gateway for credit card processing.",
     "authors": [
     {
         "name": "Fontis",

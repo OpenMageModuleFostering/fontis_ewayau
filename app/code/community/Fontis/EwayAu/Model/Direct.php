@@ -1,6 +1,6 @@
 <?php
 /**
- * Fontis eWAY Australia payment gateway
+ * Fontis eWAY Australia Extension
  *
  * NOTICE OF LICENSE
  *
@@ -8,68 +8,146 @@
  * that is bundled with this package in the file LICENSE.txt.
  * It is also available through the world-wide-web at this URL:
  * http://opensource.org/licenses/osl-3.0.php
- * If you did not receive a copy of the license and are unable to
- * obtain it through the world-wide-web, please send an email
- * to license@magentocommerce.com so you can be sent a copy immediately.
  *
  * Original code copyright (c) 2008 Irubin Consulting Inc. DBA Varien
  *
  * @category   Fontis
  * @package    Fontis_EwayAu
- * @copyright  Copyright (c) 2010 Fontis (http://www.fontis.com.au)
+ * @author     Chris Norton
+ * @author     Matthew Gamble
+ * @copyright  Copyright (c) 2014 Fontis Pty. Ltd. (http://www.fontis.com.au)
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 
+/**
+ * @method Fontis_EwayAu_Model_Direct setError(array $errorDetails)
+ * @method array getError()
+ */
 class Fontis_EwayAu_Model_Direct extends Mage_Payment_Model_Method_Cc
 {
-    protected $_code  = 'ewayau_direct';
+    const GATEWAY_URL_MAIN  = 'https://www.eway.com.au/gateway/xmlpayment.asp';
+    const GATEWAY_URL_CVN   = 'https://www.eway.com.au/gateway_cvn/xmlpayment.asp';
+    const GATEWAY_URL_TEST  = 'https://www.eway.com.au/gateway/xmltest/testpage.asp';
+
+    const REFUND_URL_MAIN   = 'https://www.eway.com.au/gateway/xmlpaymentrefund.asp';
+    const REFUND_URL_TEST   = 'https://www.eway.com.au/gateway/xmltest/refund_test.asp';
+
+    const PREAUTH_PAYMENT_URL_MAIN          = 'https://www.eway.com.au/gateway/xmlauth.asp';
+    const PREAUTH_PAYMENT_URL_CVN           = 'https://www.eway.com.au/gateway_cvn/xmlauth.asp';
+    const PREAUTH_PAYMENT_URL_MAIN_TEST     = 'https://www.eway.com.au/gateway/xmltest/authtestpage.asp';
+    const PREAUTH_PAYMENT_URL_CVN_TEST      = 'https://www.eway.com.au/gateway_cvn/authtestpage.asp';
+
+    const PREAUTH_COMPLETE_URL_MAIN         = 'https://www.eway.com.au/gateway/xmlauthcomplete.asp';
+    const PREAUTH_COMPLETE_URL_TEST         = 'https://www.eway.com.au/gateway/xmltest/authcompletetestpage.asp';
+
+    const PREAUTH_VOID_URL_MAIN             = 'https://www.eway.com.au/gateway/xmlauthvoid.asp';
+    const PREAUTH_VOID_URL_TEST             = 'https://www.eway.com.au/gateway/xmltest/authvoidtestpage.asp';
+
+    protected $_code = 'ewayau_direct';
 
     protected $_isGateway               = true;
-    protected $_canAuthorize            = false;
+    protected $_canAuthorize            = true;
     protected $_canCapture              = true;
     protected $_canCapturePartial       = false;
-    protected $_canRefund               = false;
-    protected $_canVoid                 = false;
+    protected $_canRefund               = true;
+    protected $_canRefundInvoicePartial = true;
+    protected $_canVoid                 = true;
     protected $_canUseInternal          = true;
     protected $_canUseCheckout          = true;
     protected $_canUseForMultishipping  = true;
-    protected $_canSaveCc               = true;
+    protected $_canSaveCc               = false;
 
-    protected $_formBlockType = 'ewayau/form';
-    protected $_infoBlockType = 'ewayau/info';
+    protected $_formBlockType = 'ewayau/cc_form';
+    protected $_infoBlockType = 'ewayau/cc_info';
 
     /**
-     * Get debug flag
-     *
-     * @return string
+     * @var Fontis_EwayAu_Helper_Data
      */
-    public function getDebug()
+    protected $_ewayHelper = null;
+
+    /**
+     * @return Fontis_EwayAu_Helper_Data
+     */
+    protected function getEwayHelper()
     {
-        return Mage::getStoreConfig('payment/ewayau_direct/debug_flag');
+        if ($this->_ewayHelper === null) {
+            $this->_ewayHelper = Mage::helper('ewayau');
+        }
+        return $this->_ewayHelper;
     }
 
     /**
-     * Get flag to use CCV or not
-     *
-     * @return string
-     */
-    public function getUseccv()
-    {
-        return Mage::getStoreConfig('payment/ewayau_direct/useccv');
-    }
-
-    /**
-     * Get api url of eWAY Direct payment
+     * Get API URL of eWAY Direct payment
      *
      * @return string
      */
     public function getApiGatewayUrl()
     {
-        $value = Mage::getStoreConfig('payment/ewayau_direct/api_url');
-        if (!$value || $value === false) {
-            return 'https://www.eway.com.au/gateway/xmlpayment.asp';
+        if ($this->getConfigData('test_gateway')) {
+            return self::GATEWAY_URL_TEST;
+        } else {
+            if ($this->hasVerification()) {
+                return self::GATEWAY_URL_CVN;
+            } else {
+                return self::GATEWAY_URL_MAIN;
+            }
         }
-        return $value;
+    }
+
+    /**
+     * @return string
+     */
+    public function getApiRefundUrl()
+    {
+        if ($this->getConfigData('test_gateway')) {
+            return self::REFUND_URL_TEST;
+        } else {
+            return self::REFUND_URL_MAIN;
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getApiPreAuthPaymentUrl()
+    {
+        if ($this->getConfigData('test_gateway')) {
+            if ($this->hasVerification()) {
+                return self::PREAUTH_PAYMENT_URL_CVN_TEST;
+            } else {
+                return self::PREAUTH_PAYMENT_URL_MAIN_TEST;
+            }
+        } else {
+            if ($this->hasVerification()) {
+                return self::PREAUTH_PAYMENT_URL_CVN;
+            } else {
+                return self::PREAUTH_PAYMENT_URL_MAIN;
+            }
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getApiPreAuthCompleteUrl()
+    {
+        if ($this->getConfigData('test_gateway')) {
+            return self::PREAUTH_COMPLETE_URL_TEST;
+        } else {
+            return self::PREAUTH_COMPLETE_URL_MAIN;
+        }
+    }
+
+    /**
+     * @return string
+     */
+    public function getApiPreAuthVoidUrl()
+    {
+        if ($this->getConfigData('test_gateway')) {
+            return self::PREAUTH_VOID_URL_TEST;
+        } else {
+            return self::PREAUTH_VOID_URL_MAIN;
+        }
     }
 
     /**
@@ -79,7 +157,7 @@ class Fontis_EwayAu_Model_Direct extends Mage_Payment_Model_Method_Cc
      */
     public function getCustomerId()
     {
-        return Mage::getStoreConfig('payment/ewayau_direct/customer_id');
+        return $this->getConfigData('customer_id');
     }
 
     /**
@@ -89,160 +167,395 @@ class Fontis_EwayAu_Model_Direct extends Mage_Payment_Model_Method_Cc
      */
     public function getAcceptedCurrency()
     {
-        return Mage::getStoreConfig('payment/' . $this->getCode() . '/currency');
+        return $this->getConfigData('currency');
     }
 
+    /**
+     * @return string
+     */
+    public function getRefundPassword()
+    {
+        return $this->getConfigData('refund_password');
+    }
+
+    /**
+     * @return bool
+     */
+    public function canCapture()
+    {
+        if ($this->_isPreauthorizeCapture($this->getInfoInstance())) {
+            return true;
+        } elseif ($this->getConfigPaymentAction() === Mage_Payment_Model_Method_Abstract::ACTION_AUTHORIZE_CAPTURE) {
+            return $this->_canCapture;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @return bool
+     */
+    protected function _isPreauthorizeCapture($payment)
+    {
+        $lastTransaction = $payment->getTransaction($payment->getLastTransId());
+        if ($lastTransaction && $lastTransaction->getTxnType() == Mage_Sales_Model_Order_Payment_Transaction::TYPE_AUTH) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @return Fontis_EwayAu_Model_Direct
+     * @throws Mage_Core_Exception
+     */
     public function validate()
     {
         parent::validate();
+
         $paymentInfo = $this->getInfoInstance();
         if ($paymentInfo instanceof Mage_Sales_Model_Order_Payment) {
-            $currency_code = $paymentInfo->getOrder()->getBaseCurrencyCode();
+            $currencyCode = $paymentInfo->getOrder()->getBaseCurrencyCode();
         } else {
-            $currency_code = $paymentInfo->getQuote()->getBaseCurrencyCode();
+            $currencyCode = $paymentInfo->getQuote()->getBaseCurrencyCode();
         }
-        if ($currency_code != $this->getAcceptedCurrency()) {
-            Mage::throwException(Mage::helper('ewayau')->__('Selected currency code ('.$currency_code.') is not compatabile with eWAY'));
+        if ($currencyCode != $this->getAcceptedCurrency()) {
+            Mage::throwException($this->getEwayHelper()->__('Selected currency code (%s) is not compatible with eWAY', $currencyCode));
         }
         return $this;
     }
 
+    /**
+     * @param Varien_Object $payment
+     * @param float $amount
+     * @return Fontis_EwayAu_Model_Direct
+     * @throws Mage_Core_Exception
+     */
+    public function authorize(Varien_Object $payment, $amount)
+    {
+        if ($amount <= 0) {
+            Mage::throwException($this->getEwayHelper()->__('Invalid amount for authorization.'));
+        }
+
+        $this->setAmount($amount)->setPayment($payment);
+
+        $result = $this->callDoAuthorisationPaymentRequest($payment, $amount);
+
+        if ($result === false) {
+            $this->processError($this->getError(), 'payment');
+        } else {
+            if ($result['ewayTrxnStatus'] === 'True') {
+                $payment->setStatus(Mage_Payment_Model_Method_Abstract::STATUS_APPROVED)
+                    ->setTransactionId($result['ewayTrxnNumber'])
+                    ->setLastTransId($result['ewayTrxnNumber'])
+                    ->setIsTransactionClosed(0);
+            } else {
+                Mage::throwException($result['ewayTrxnError']);
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * @param Varien_Object $payment
+     * @param float $amount
+     * @return Fontis_EwayAu_Model_Direct
+     * @throws Mage_Core_Exception
+     */
     public function capture(Varien_Object $payment, $amount)
     {
-        $this->setAmount($amount)
-            ->setPayment($payment);
+        if ($amount <= 0) {
+            Mage::throwException($this->getEwayHelper()->__('Invalid amount for authorization.'));
+        }
 
-        $result = $this->callDoDirectPayment($payment)!==false;
+        $this->setAmount($amount)->setPayment($payment);
 
-        if ($result) {
-            $payment->setStatus(self::STATUS_APPROVED)
-                ->setLastTransId($this->getTransactionId());
+        if ($this->_isPreauthorizeCapture($payment)) {
+            $result = $this->callDoCompleteAuthorisedPayment($payment, $amount);
         } else {
-            $e = $this->getError();
-            if (isset($e['message'])) {
-                $message = Mage::helper('ewayau')->__('There has been an error processing your payment.') . $e['message'];
+            $result = $this->callDoDirectPayment($payment, $amount);
+        }
+
+        if ($result === false) {
+            $this->processError($this->getError(), 'payment');
+        } else {
+            if ($result['ewayTrxnStatus'] === 'True') {
+                $payment->setStatus(Mage_Payment_Model_Method_Abstract::STATUS_SUCCESS)
+                    ->setLastTransId($result['ewayTrxnNumber'])
+                    ->setTransactionId($result['ewayTrxnNumber'])
+                    ->setIsTransactionClosed(1);
             } else {
-                $message = Mage::helper('ewayau')->__('There has been an error processing your payment. Please try later or contact us for help.');
+                Mage::throwException($result['ewayTrxnError']);
             }
-            Mage::throwException($message);
         }
         return $this;
     }
 
+    /**
+     * @param Varien_Object $payment
+     * @return Fontis_EwayAu_Model_Direct
+     */
     public function cancel(Varien_Object $payment)
     {
-        $payment->setStatus(self::STATUS_DECLINED);
+        $payment->setStatus(Mage_Payment_Model_Method_Abstract::STATUS_DECLINED);
         return $this;
     }
 
     /**
-     * prepare params to send to gateway
-     *
-     * @return bool | array
+     * @param Varien_Object $payment
+     * @return Fontis_EwayAu_Model_Direct
+     * @throws Mage_Core_Exception
      */
-    public function callDoDirectPayment()
+    public function void(Varien_Object $payment)
     {
-        $payment = $this->getPayment();
-        $billing = $payment->getOrder()->getBillingAddress();
+        if (!$this->_isPreauthorizeCapture($payment)) {
+            Mage::throwException($this->_getHelper()->__('Void action is not available.'));
+        }
 
-        $invoiceDesc = '';
-        $lengs = 0;
-        foreach ($payment->getOrder()->getAllItems() as $item) {
-            if ($item->getParentItem()) {
-                continue;
+        $amount = $payment->getAmountAuthorized();
+
+        $this->setAmount($amount)->setPayment($payment);
+
+        $result = $this->callDoVoidAuthorisedPayment($payment, $amount);
+
+        if ($result === false) {
+            $this->processError($this->getError(), 'refund');
+        } else {
+            if ($result['ewayTrxnStatus'] === 'True' && $result['ewayReturnAmount'] == $this->getFormattedAmount($amount)) {
+                $payment
+                    ->setStatus(Mage_Payment_Model_Method_Abstract::STATUS_VOID)
+                    ->setLastTransId($result['ewayTrxnNumber'])
+                    ->setIsTransactionClosed(1);
+                ;
+            } else {
+                Mage::throwException($result['ewayTrxnError']);
             }
-            if (Mage::helper('core/string')->strlen($invoiceDesc.$item->getName()) > 10000) {
-                break;
-            }
-            $invoiceDesc .= $item->getName() . ', ';
         }
-        $invoiceDesc = Mage::helper('core/string')->substr($invoiceDesc, 0, -2);
-
-        $address = clone $billing;
-        $address->unsFirstname();
-        $address->unsLastname();
-        $address->unsPostcode();
-        $formatedAddress = '';
-        $tmpAddress = explode(' ', str_replace("\n", ' ', trim($address->format('text'))));
-        foreach ($tmpAddress as $part) {
-            if (strlen($part) > 0) $formatedAddress .= $part . ' ';
-        }
-//        $this->getQuote()->reserveOrderId();
-        $xml = "<ewaygateway>";
-        $xml .= "<ewayCustomerID>" . $this->getCustomerId() . "</ewayCustomerID>";
-        $xml .= "<ewayTotalAmount>" . ($this->getAmount()*100) . "</ewayTotalAmount>";
-        $xml .= "<ewayCardHoldersName>" . htmlentities(trim($payment->getCcOwner()), ENT_QUOTES, 'UTF-8') . "</ewayCardHoldersName>";
-        $xml .= "<ewayCardNumber>" . $payment->getCcNumber() . "</ewayCardNumber>";
-        $xml .= "<ewayCardExpiryMonth>" . $payment->getCcExpMonth() . "</ewayCardExpiryMonth>";
-        $xml .= "<ewayCardExpiryYear>" . $payment->getCcExpYear() . "</ewayCardExpiryYear>";
-        $xml .= "<ewayTrxnNumber>" . '' . "</ewayTrxnNumber>";
-        $xml .= "<ewayCustomerInvoiceDescription>" . htmlentities(trim($invoiceDesc), ENT_QUOTES, 'UTF-8') . "</ewayCustomerInvoiceDescription>";
-        $xml .= "<ewayCustomerFirstName>" . htmlentities(trim($billing->getFirstname()), ENT_QUOTES, 'UTF-8') . "</ewayCustomerFirstName>";
-        $xml .= "<ewayCustomerLastName>" . htmlentities(trim($billing->getLastname()), ENT_QUOTES, 'UTF-8') . "</ewayCustomerLastName>";
-        $xml .= "<ewayCustomerEmail>" . htmlentities(trim($payment->getOrder()->getCustomerEmail()), ENT_QUOTES, 'UTF-8') . "</ewayCustomerEmail>";
-        $xml .= "<ewayCustomerAddress>" . htmlentities(trim($formatedAddress), ENT_QUOTES, 'UTF-8') . "</ewayCustomerAddress>";
-        $xml .= "<ewayCustomerPostcode>" . htmlentities(trim($billing->getPostcode()), ENT_QUOTES, 'UTF-8') . "</ewayCustomerPostcode>";
-//        $xml .= "<ewayCustomerInvoiceRef>" . $this->getQuote()->getReservedOrderId() . "</ewayCustomerInvoiceRef>";
-        $xml .= "<ewayCustomerInvoiceRef>" . '' . "</ewayCustomerInvoiceRef>";
-
-        if ($this->getUseccv()) {
-            $xml .= "<ewayCVN>" . $payment->getCcCid() . "</ewayCVN>";
-        }
-
-        $xml .= "<ewayOption1>" . '' . "</ewayOption1>";
-        $xml .= "<ewayOption2>" . '' . "</ewayOption2>";
-        $xml .= "<ewayOption3>" . '' . "</ewayOption3>";
-        $xml .= "</ewaygateway>";
-
-        $resultArr = $this->call($xml);
-
-        if ($resultArr === false) {
-            return false;
-        }
-
-        $this->setTransactionId($resultArr['ewayTrxnNumber']);
-
-        return $resultArr;
+        return $this;
     }
 
     /**
-     * Send params to gateway
-     *
-     * @param string $xml
-     * @return bool | array
+     * @param Varien_Object $payment
+     * @param float $amount
+     * @return Fontis_EwayAu_Model_Direct
+     * @throws Mage_Core_Exception
      */
-    public function call($xml)
+    public function refund(Varien_Object $payment, $amount)
     {
-        if ($this->getDebug()) {
-            $debug = Mage::getModel('ewayau/api_debug')
-                ->setRequestBody($xml)
-                ->save();
+        $this->setAmount($amount)->setPayment($payment);
+        
+        $result = $this->callDoRefund($payment, $amount);
+
+        if ($result === false) {
+            $this->processError($this->getError(), 'refund');
+        } else {
+            if ($result['ewayTrxnStatus'] === 'True' && $result['ewayReturnAmount'] == $this->getFormattedAmount($amount)) {
+                $payment->setStatus(Mage_Payment_Model_Method_Abstract::STATUS_APPROVED)
+                    ->setLastTransId($result['ewayTrxnNumber']);
+            } else {
+                Mage::throwException($result['ewayTrxnError']);
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * @param array $error
+     * @param string $action payment, refund, etc
+     * @throws Mage_Core_Exception
+     */
+    protected function processError($error, $action)
+    {
+        if (isset($error['message'])) {
+            if (stristr($error['message'], Fontis_EwayAu_Helper_Data::ERROR_MSG_DONOTHONOUR)) {
+                $message = $this->getEwayHelper()->__("There has been an error processing your $action: Your credit card details are invalid.");
+            } else {
+                $message = $this->getEwayHelper()->__("There has been an error processing your $action. ") . $error['message'];
+            }
+        } else {
+            $message = $this->getEwayHelper()->__("There has been an error processing your $action. Please try later or contact us for help.");
+        }
+        Mage::throwException($message);
+    }
+
+    /**
+     * Get the Simple XML objected used for pre-auth and capture payment transactions.
+     *
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @param float $amount
+     * @return SimpleXMLElement
+     */
+    protected function getPaymentXmlObject($payment, $amount)
+    {
+        $order = $payment->getOrder();
+        $billing = $order->getBillingAddress();
+        $formattedAddress = $this->getEwayHelper()->getOrderAddressString($billing);
+        $invoiceDesc = $this->getEwayHelper()->getInvoiceDescription($order);
+
+        // Build the XML request
+        $xml = new SimpleXMLElement('<ewaygateway></ewaygateway>');
+        $xml->addChild('ewayCustomerID', $this->getCustomerId());
+        $xml->addChild('ewayTotalAmount', $this->getFormattedAmount($amount));
+        $xml->addChild('ewayCustomerFirstName', str_replace('&', '&amp;', trim($billing->getFirstname())));
+        $xml->addChild('ewayCustomerLastName', str_replace('&', '&amp;', trim($billing->getLastname())));
+        $xml->addChild('ewayCustomerEmail', str_replace('&', '&amp;', trim($order->getCustomerEmail())));
+        $xml->addChild('ewayCustomerAddress', str_replace('&', '&amp;', trim($formattedAddress)));
+        $xml->addChild('ewayCustomerPostcode', str_replace('&', '&amp;', trim($billing->getPostcode())));
+        $xml->addChild('ewayCustomerInvoiceDescription', str_replace('&', '&amp;', trim($invoiceDesc)));
+        $xml->addChild('ewayCustomerInvoiceRef', '');
+        $xml->addChild('ewayCardHoldersName', str_replace('&', '&amp;', $payment->getCcOwner()));
+        $xml->addChild('ewayCardNumber', $payment->getCcNumber());
+        $xml->addChild('ewayCardExpiryMonth', $payment->getCcExpMonth());
+        $xml->addChild('ewayCardExpiryYear', substr($payment->getCcExpYear(), 2, 2));
+        $xml->addChild('ewayTrxnNumber', '');
+
+        $xml->addChild('ewayOption1', '');
+        $xml->addChild('ewayOption2', '');
+        $xml->addChild('ewayOption3', '');
+
+        if ($this->hasVerification()) {
+            $xml->addChild('ewayCVN', $payment->getCcCid());
         }
 
+        return $xml;
+    }
+
+    /**
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @param float $amount
+     * @return array|false
+     */
+    protected function callDoDirectPayment($payment, $amount)
+    {
+        $xml = $this->getPaymentXmlObject($payment, $amount);
+        $url = $this->getApiGatewayUrl();
+
+        // Convert to string before sending to the gateway
+        return $this->call($xml->asXML(), $url);
+    }
+
+    /**
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @param float $amount
+     * @return array|false
+     */
+    protected function callDoAuthorisationPaymentRequest($payment, $amount)
+    {
+        $xml = $this->getPaymentXmlObject($payment, $amount);
+        $url = $this->getApiPreAuthPaymentUrl();
+
+        // Convert to string before sending to the gateway
+        return $this->call($xml->asXML(), $url);
+    }
+
+    /**
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @param float $amount
+     * @return array|false
+     */
+    protected function callDoCompleteAuthorisedPayment($payment, $amount)
+    {
+        // Build the XML request
+        $xml = new SimpleXMLElement('<ewaygateway></ewaygateway>');
+        $xml->addChild('ewayCustomerID', $this->getCustomerId());
+        $xml->addChild('ewayTotalAmount', $this->getFormattedAmount($amount));
+        $xml->addChild('ewayAuthTrxnNumber', $payment->getLastTransId());
+        $xml->addChild('ewayCardExpiryMonth', $payment->getCcExpMonth());
+        $xml->addChild('ewayCardExpiryYear', $payment->getCcExpYear());
+
+        $xml->addChild('ewayOption1', '');
+        $xml->addChild('ewayOption2', '');
+        $xml->addChild('ewayOption3', '');
+
+        $url = $this->getApiPreAuthCompleteUrl();
+
+        // Convert to string before sending to the gateway
+        return $this->call($xml->asXML(), $url);
+    }
+
+    /**
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @param float $amount
+     * @return array|false
+     */
+    protected function callDoVoidAuthorisedPayment($payment, $amount)
+    {
+        // Build the XML request
+        $xml = new SimpleXMLElement('<ewaygateway></ewaygateway>');
+        $xml->addChild('ewayCustomerID', $this->getCustomerId());
+        $xml->addChild('ewayTotalAmount', $this->getFormattedAmount($amount));
+        $xml->addChild('ewayAuthTrxnNumber', $this->getOriginalTransactionId($payment->getLastTransId()));
+
+        $xml->addChild('ewayOption1', '');
+        $xml->addChild('ewayOption2', '');
+        $xml->addChild('ewayOption3', '');
+
+        $url = $this->getApiPreAuthVoidUrl();
+
+        // Convert to string before sending to the gateway
+        return $this->call($xml->asXML(), $url);
+    }
+
+    /**
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @param float $amount
+     * @return array|false
+     */
+    protected function callDoRefund($payment, $amount)
+    {
+        // Build the XML request
+        $xml = new SimpleXMLElement('<ewaygateway></ewaygateway>');
+        $xml->addChild('ewayCustomerID', $this->getCustomerId());
+        $xml->addChild('ewayTotalAmount', $this->getFormattedAmount($amount));
+        $xml->addChild('ewayCardExpiryMonth', $payment->getCcExpMonth());
+        $xml->addChild('ewayCardExpiryYear', substr($payment->getCcExpYear(), 2, 2));
+        $xml->addChild('ewayOriginalTrxnNumber', $this->getOriginalTransactionId($payment->getLastTransId()));
+        $xml->addChild('ewayRefundPassword', $this->getRefundPassword());
+
+        $xml->addChild('ewayOption1', '');
+        $xml->addChild('ewayOption2', '');
+
+        $url = $this->getApiRefundUrl();
+
+        // Convert to string before sending to the gateway
+        return $this->call($xml->asXML(), $url);
+    }
+
+    /**
+     * Send parameters to eWay gateway.
+     *
+     * @param string $xml
+     * @param string $url
+     * @return array|false
+     */
+    protected function call($xml, $url)
+    {
         $http = new Varien_Http_Adapter_Curl();
-        $config = array('timeout' => 30);
+        $config = array('timeout' => Fontis_EwayAu_Helper_Data::DEFAULT_TIMEOUT);
 
         $http->setConfig($config);
-        $http->write(Zend_Http_Client::POST, $this->getApiGatewayUrl(), '1.1', array(), $xml);
+        $http->write(Zend_Http_Client::POST, $url, Zend_Http_Client::HTTP_1, array(), $xml);
         $response = $http->read();
 
         $response = preg_split('/^\r?$/m', $response, 2);
         $response = trim($response[1]);
 
-        if ($this->getDebug()) {
-            $debug->setResponseBody($response)->save();
-        }
-
         if ($http->getErrno()) {
             $http->close();
             $this->setError(array(
-                'message' => $http->getError()
+                'message' => $http->getErrno() . ' - ' . $http->getError(),
             ));
             return false;
         }
         $http->close();
 
-        $parsedResArr = $this->parseXmlResponse($response);
+        if (($parsedResArr = $this->parseXmlResponse($response)) === false) {
+            $this->setError(array(
+                'message' => 'Invalid response from gateway.',
+            ));
+            return false;
+        }
 
         if ($parsedResArr['ewayTrxnStatus'] == 'True') {
             $this->unsError();
@@ -251,7 +564,7 @@ class Fontis_EwayAu_Model_Direct extends Mage_Payment_Model_Method_Cc
 
         if (isset($parsedResArr['ewayTrxnError'])) {
             $this->setError(array(
-                'message' => $parsedResArr['ewayTrxnError']
+                'message' => $parsedResArr['ewayTrxnError'],
             ));
         }
 
@@ -259,20 +572,73 @@ class Fontis_EwayAu_Model_Direct extends Mage_Payment_Model_Method_Cc
     }
 
     /**
-     * parse response of gateway
+     * @param float $amount
+     * @return float
+     */
+    protected function getFormattedAmount($amount)
+    {
+        return $amount * 100;
+    }
+
+    /**
+     * Get Transaction ID that can be used with eWAY API calls.
+     * Remove payment action appended by Magento to the end of transaction ID.
+     *
+     * @param string $transactionId
+     * @return string
+     */
+    protected function getOriginalTransactionId($transactionId)
+    {
+        if (strstr($transactionId, '-')) {
+            $transactionData = explode('-', $transactionId);
+            return $transactionData[0];
+        }
+
+        return $transactionId;
+    }
+
+    /**
+     * Parse response of gateway
      *
      * @param string $xmlResponse
      * @return array
      */
-    public function parseXmlResponse($xmlResponse)
+    protected function parseXmlResponse($xmlResponse)
     {
         $xmlObj = simplexml_load_string($xmlResponse);
+        
+        if ($xmlObj === false) {
+            return false;
+        }
+        
         $newResArr = array();
         foreach ($xmlObj as $key => $val) {
-            $newResArr[$key] = (string)$val;
+            $newResArr[$key] = (string) $val;
         }
 
         return $newResArr;
     }
 
+    /**
+     * Check if invoice email can be sent, and send it.
+     * 
+     * @param Mage_Sales_Model_Order_Invoice $invoice
+     * @param Mage_Sales_Model_Order_Payment $payment
+     * @return Fontis_EwayAu_Model_Direct
+     */
+    public function processInvoice($invoice, $payment)
+    {
+        parent::processInvoice($invoice, $payment);
+
+        try {
+            $storeId = $invoice->getOrder()->getStoreId();
+            if (Mage::helper('sales')->canSendNewInvoiceEmail($storeId)) {
+                $invoice->save();
+                $invoice->sendEmail();
+            }
+        } catch (Exception $e) {
+            Mage::logException($e);
+        }
+        return $this;
+    }
 }

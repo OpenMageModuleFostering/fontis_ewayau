@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 /**
- * Fontis eWAY Australia payment gatewayau
+ * Fontis eWAY Australia Extension
  *
  * NOTICE OF LICENSE
  *
@@ -9,36 +9,26 @@
  * that is bundled with this package in the file LICENSE.txt.
  * It is also available through the world-wide-web at this URL:
  * http://opensource.org/licenses/osl-3.0.php
- * If you did not receive a copy of the license and are unable to
- * obtain it through the world-wide-web, please send an email
- * to license@magentocommerce.com so you can be sent a copy immediately.
- *
- * Original code copyright (c) 2008 Irubin Consulting Inc. DBA Varien
  *
  * @category   Fontis
  * @package    Fontis_EwayAu
- * @copyright  Copyright (c) 2010 Fontis (http://www.fontis.com.au)
+ * @author     Chris Norton
+ * @author     Matthew Gamble
+ * @copyright  Copyright (c) 2014 Fontis Pty. Ltd. (http://www.fontis.com.au)
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  */
 -->
 <config>
     <modules>
         <Fontis_EwayAu>
-            <version>1.0.1</version>
+            <version>1.3.0</version>
         </Fontis_EwayAu>
     </modules>
     <global>
         <models>
             <ewayau>
                 <class>Fontis_EwayAu_Model</class>
-                <resourceModel>ewayau_mysql4</resourceModel>
             </ewayau>
-            <ewayau_mysql4>
-                <class>Fontis_EwayAu_Model_Mysql4</class>
-                <entities>
-                    <api_debug><table>fontis_ewayau_api_debug</table></api_debug>
-                </entities>
-            </ewayau_mysql4>
         </models>
         <helpers>
             <ewayau>
@@ -49,7 +39,6 @@
             <ewayau_setup>
                 <setup>
                     <module>Fontis_EwayAu</module>
-                    <class>Fontis_EwayAu_Model_Mysql4_Setup</class>
                 </setup>
                 <connection>
                     <use>core_setup</use>
@@ -67,7 +56,9 @@
             </ewayau_read>
         </resources>
         <blocks>
-            <ewayau><class>Fontis_EwayAu_Block</class></ewayau>
+            <ewayau>
+                <class>Fontis_EwayAu_Block</class>
+            </ewayau>
         </blocks>
         <payment>
             <cc>
@@ -88,7 +79,7 @@
     </global>
     <frontend>
         <secure_url>
-            <ewayau_shared>/ewayau/shared</ewayau_shared>
+            <ewayau_shared>/ewayau</ewayau_shared>
         </secure_url>
         <routers>
             <ewayau>
@@ -111,12 +102,19 @@
         <layout>
             <updates>
                 <ewayau>
-                    <file>fontis_ewayau.xml</file>
+                    <file>fontis/ewayau.xml</file>
                 </ewayau>
             </updates>
         </layout>
     </frontend>
     <adminhtml>
+        <layout>
+            <updates>
+                <ewayau>
+                    <file>fontis/ewayau.xml</file>
+                </ewayau>
+            </updates>
+        </layout>
         <translate>
             <modules>
                 <Fontis_EwayAu>
@@ -131,6 +129,7 @@
         <payment>
             <ewayau_direct>
                 <customer_id backend_model="adminhtml/system_config_backend_encrypted"/>
+                <refund_password backend_model="adminhtml/system_config_backend_encrypted"/>
                 <currency>AUD</currency>
                 <payment_action>authorize_capture</payment_action>
                 <model>ewayau/direct</model>
@@ -138,6 +137,7 @@
                 <order_status>processing</order_status>
                 <cctypes>AE,VI,MC,DICL,JCB</cctypes>
                 <allowspecific>0</allowspecific>
+                <test_gateway>0</test_gateway>
             </ewayau_direct>
             <ewayau_shared>
                 <customer_id backend_model="adminhtml/system_config_backend_encrypted"/>
@@ -155,6 +155,32 @@
                 <order_status>processing</order_status>
                 <allowspecific>0</allowspecific>
             </ewayau_secure>
+            <ewayau_token>
+                <customer_id backend_model="adminhtml/system_config_backend_encrypted"/>
+                <username backend_model="adminhtml/system_config_backend_encrypted"/>
+                <password backend_model="adminhtml/system_config_backend_encrypted"/>
+                <currency>AUD</currency>
+                <payment_action>authorize_capture</payment_action>
+                <model>ewayau/token</model>
+                <title>eWAY Token</title>
+                <show_in_checkout>0</show_in_checkout>
+                <order_status>processing</order_status>
+                <cctypes>AE,VI,MC,DICL,JCB</cctypes>
+                <allowspecific>0</allowspecific>
+                <test_gateway>0</test_gateway>
+                <debug>0</debug>
+            </ewayau_token>
         </payment>
     </default>
+    <admin>
+        <routers>
+            <adminhtml>
+                <args>
+                    <modules>
+                        <ewayau before="Mage_Adminhtml">Fontis_EwayAu</ewayau>
+                    </modules>
+                </args>
+            </adminhtml>
+        </routers>
+    </admin>
 </config>
