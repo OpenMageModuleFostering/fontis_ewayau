@@ -1,16 +1,19 @@
 {
-    "name": "OpenMageModuleFostering/Fontis_EwayAu",
+    "name": "OpenMageModuleFostering\/Fontis_EwayAu",
     "type": "magento-module",
     "license": "Open-Software-License-(OSL-3.0)",
     "homepage": "",
     "description": "This extension uses the eWAY Australia payment gateway for credit card processing.",
     "authors": [
-    {
-        "name": "Fontis",
-        "email": "magento@fontis.com.au"
-    }
-],
+        {
+            "name": "Fontis",
+            "email": "magento@fontis.com.au"
+        }
+    ],
     "suggest": {
-        "magento-hackathon/magento-composer-installer": "*"
-    }
+        "magento-hackathon\/magento-composer-installer": "*"
+    },
+    "keywords": [
+        "openmage-module"
+    ]
 }
